@@ -1,0 +1,151 @@
+#! /bin/sh
+
+set -e
+
+version_message="\
+Install HFL BOINC Metapackage v2020-01-18
+
+Copyright © 2020 Henrik Franciscus Leppä
+
+This is free software. You may redistribute copies of it under the terms of the
+MIT License <https://opensource.org/licenses/MIT>. There is NO WARRANTY, to the
+extent permitted by law.
+
+Based on: [HFL Custom APT Metapackage Installer 1.0.0 by Henrik Franciscus
+Leppä](https://github.com/henrik-leppa/hfl-custom-apt-metapackage-installer)
+"
+help_message="\
+Installs my custom metapackage for BOINC.
+
+Usage: install-hfl-boinc-metapackage
+   or: install-hfl-boinc-metapackage (--help | -H | -h | -?)
+   or: install-hfl-boinc-metapackage (--version | -V | -v)
+
+Options:
+  --help, -H, -h, -?
+      Print this help message.
+  --version, -V, -v
+      Print version and copyright information.
+
+Notes:
+- Requires \`apt-get\`, \`add-apt-repository\`, \`equivs-build\`, and \`gdebi\`
+  commands; the last three will be installed if not found.
+- If a package fails to install, try to install it with:
+  \`sudo apt-get install PACKAGE_NAME\`, to find out more on why it failed.
+- To view and edit the list of packages, open this script with a text editor.
+- When removing packages from the list, run \`sudo apt-get autoremove\`
+  afterwards to clean out orphaned packages.
+"
+
+# [See sysexits.h](https://www.freebsd.org/cgi/man.cgi?query=sysexits&sektion=3)
+ex_usage=64
+ex_oserr=71
+ex_noperm=77
+
+random() {
+  od -N4 -tu /dev/random | awk 'NR==1 {print $2} {}'
+}
+
+
+if [ $# -ne 0 ]; then
+  case $1 in
+    (--version | -V | -v) printf '%s\n' "$version_message" ; exit ;;
+    (--help | -H | -h | -\?) printf '%s\n' "$help_message" ; exit ;;
+    (*)
+      printf '%s\n\n' "Invalid argument: \`$1\`" >& 2
+      printf '%s\n\n' "Use \`--help\` option to see all valid arguments." >& 2
+      exit $ex_usage
+    ;;
+  esac
+fi
+
+if [ ! "$(command -v apt-get)" ]; then
+  message="Command 'apt-get' was not found. Install it and try again."
+  printf '%s\n' "$message" >& 2
+  exit $ex_oserr
+fi
+
+if [ "$(id -u)" != 0 ]; then
+  if [ "$(command -v sudo)" ]; then
+    sudo "$0" "$@"
+    exit
+  else
+    printf '%s\n' "This script requires root permissions."
+    exit $ex_noperm
+  fi
+fi
+
+if [ ! "$(command -v add-apt-repository)" ]; then
+  apt-get install software-properties-common ||
+    apt-get install python-software-properties ||
+    apt-get install python3-software-properties
+fi
+if [ ! "$(command -v gdebi)" ]; then
+  apt-get install gdebi
+fi
+if [ ! "$(command -v equivs-build)" ]; then
+  apt-get install equivs
+fi
+
+
+while true; do
+  temporary_directory="${TMPDIR:-/tmp}/$(random)"
+  if [ ! -e "$temporary_directory" ]; then
+    break
+  fi
+done
+
+exit=0; hangup=1; interrupt=2; quit=3; termination=15
+
+trap 'rm -f -r "$temporary_directory"' \
+  "$exit" "$hangup" "$interrupt" "$quit" "$termination"
+
+metapackage_name="hfl-boinc"
+metapackage_directory="$temporary_directory/$metapackage_name"
+metapackage_version="$(date -u '+%Y.%m.%d.%H.%M.%S')"
+metapackage_dependencies="\
+  boinc,
+# Packages for compatibility on 64-bit systems:
+# @see <https://www.cpdn.org/forum_thread.php?id=8008>
+# @see <https://en.wikipedia.org/wiki/Linux_Mint_version_history>
+    lib32ncurses5,
+    lib32z1,
+    lib32stdc++-6-dev,
+"
+metapackage_short_description="HFL BOINC Metapackage"
+metapackage_dependencies_indented=$(
+  printf '%s\n' "$metapackage_dependencies" | sed 's/^/ /g'
+)
+metapackage_long_description="\
+  My custom metapackage for BOINC.
+  .
+  Dependecy list:
+$metapackage_dependencies_indented
+  .
+  (Dependencies of the installation script (not in a metapackage)):
+   apt,
+   equivs,
+   gdebi,
+   software-properties-common
+     | python-software-properties
+     | python3-software-properties,
+"
+
+metapackage_ns_control_text="\
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+
+Package: $metapackage_name
+Version: $metapackage_version
+Description: $metapackage_short_description
+$metapackage_long_description
+Depends:
+$metapackage_dependencies
+"
+
+mkdir -p "$metapackage_directory"
+cd "$metapackage_directory"
+printf '%s' "$metapackage_ns_control_text" > ./ns-control
+equivs-build ./ns-control
+gdebi --non-interactive ./"$metapackage_name"_"$metapackage_version"_all.deb
