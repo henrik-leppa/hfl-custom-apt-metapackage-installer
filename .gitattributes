@@ -1,0 +1,16 @@
+# Files without extensions should use Unix line endings, because they're scripts
+*                 text eol=lf
+
+# Files with extensions should detect line endings
+*.*               text=auto !eol
+
+# Documentation
+*.md              text
+
+# Configs
+.gitattributes    text
+.gitconfig        text
+
+# Exclude files from exporting
+.gitattributes    export-ignore
+.gitignore        export-ignore
